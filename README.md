@@ -11,7 +11,7 @@ FabGenie is a stylish and intuitive chatbot that helps users make fashion choice
 2. [Features](#features)
 3. [Installation](#installation)
 4. [Usage](#usage)
-5. [API Keys and Configuration](#api-keys-and-configuration)
+5. [API Keys and Configuration](##api-keys-and-configuration)
 6. [Technologies Used](#technologies-used)
 7. [Acknowledgements](#acknowledgements)
 
