@@ -25,7 +25,7 @@ Users can interact with FabGenie through follow-up questions, making it a conver
 
 This project is developed and tested on **Google Colab**, making it accessible and easy to run in an online environment.
 
-## ✨ Features
+## ✨ [Features](#features)
 - **Weather-Adapted Styling**: Fetches real-time weather information based on city input to recommend seasonally appropriate attire.
 - **Shopping Suggestions**: Generates Amazon links for recommended items, so you can start shopping right away.
 - **Interactive Q&A**: Users can ask specific questions about their outfit or seek more tailored advice.
