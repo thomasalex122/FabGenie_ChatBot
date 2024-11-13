@@ -15,7 +15,7 @@ FabGenie is a stylish and intuitive chatbot that helps users make fashion choice
 6. [Technologies Used](#technologies-used)
 7. [Acknowledgements](#acknowledgements)
 
-## 🎉 Project Overview(#project-overview)
+## 🎉 Project Overview
 FabGenie is designed to serve as your virtual stylist. With user input on gender, location, and occasion, the chatbot uses Google Gemini API to offer specific fashion advice, including:
 - **What to wear**: suggestions on tops, bottoms, footwear, and accessories
 - **Style tips**: color coordination, style dos and don'ts, and more
