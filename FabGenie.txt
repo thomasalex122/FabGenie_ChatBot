@@ -1,0 +1,320 @@
+import requests
+import google.generativeai as genai
+from rich.console import Console
+from rich.panel import Panel
+from rich.padding import Padding
+from rich.theme import Theme
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.style import Style
+from rich.table import Table
+from rich import box
+import time
+import re
+import sys
+from datetime import datetime
+import urllib.parse
+
+genai.configure(api_key='WEATHER_API_ENTER_HERE')
+# Custom theme for a more engaging look
+custom_theme = Theme({
+    'greeting': 'bold magenta',
+    'user_input': 'bold cyan',
+    'success': 'bold green',
+    'error': 'bold red',
+    'info': 'bold yellow',
+    'accent': 'bold magenta',
+    'link': 'bold white',
+    'heading': 'bold cyan',
+    'question': 'bold yellow'
+})
+
+console = Console(theme=custom_theme)
+
+def display_welcome_banner():
+    """Display an attractive welcome message"""
+    welcome_text = """
+    ✨ Welcome to FabGenie ✨
+    Your Personal Fashion Assistant
+    """
+    console.print(Panel(
+        welcome_text,
+        style="accent",
+        box=box.DOUBLE_EDGE,
+        padding=(1, 2)
+    ))
+    console.print("\n💫 Let's create your perfect outfit together!", style="greeting")
+
+def display_session_info(gender, occasion, weather):
+    """Display current session information"""
+    session_info = f"""
+    👤 Styling for: {gender.capitalize()}
+    🎯 Occasion: {occasion.capitalize()}
+    🌤️ Weather: {weather.capitalize()}
+    """
+    console.print(Panel(
+        session_info,
+        title="[bold magenta]Session Details[/bold magenta]",
+        border_style="magenta",
+        box=box.ROUNDED
+    ))
+
+def get_user_input(prompt, valid_options=None, error_msg=None):
+    """Get user input with a friendly conversational tone"""
+    while True:
+        console.print(f"\n{prompt}", style="user_input")
+        response = console.input("➤ ").strip().lower()
+
+        if not valid_options or response in valid_options:
+            return response
+
+        default_msg = "Hmm, I didn't catch that. Could you try again?"
+        error_message = error_msg if error_msg else default_msg
+        console.print("💭 " + error_message, style="error")
+
+def get_weather(city):
+    """Get current weather conditions for a given city using OpenWeatherMap API."""
+    try:
+        API_KEY = "OPEN_WEATHER_API_KEY_HERE"  # Replace with your actual API key
+        BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
+
+        params = {
+            'q': city,
+            'appid': API_KEY,
+            'units': 'metric'
+        }
+
+        response = requests.get(BASE_URL, params=params)
+        response.raise_for_status()
+
+        data = response.json()
+        temp = round(data['main']['temp'])
+        weather_desc = data['weather'][0]['main'].lower()
+
+        if temp < 10:
+            temp_desc = "cold"
+        elif temp < 20:
+            temp_desc = "mild"
+        elif temp < 28:
+            temp_desc = "warm"
+        else:
+            temp_desc = "hot"
+
+        weather_mapping = {
+            'clear': 'sunny',
+            'clouds': 'cloudy',
+            'rain': 'rainy',
+            'drizzle': 'rainy',
+            'thunderstorm': 'stormy',
+            'snow': 'snowy',
+            'mist': 'misty',
+            'fog': 'foggy'
+        }
+
+        weather_type = weather_mapping.get(weather_desc, weather_desc)
+        return f"{temp_desc} and {weather_type}"
+
+    except requests.RequestException as e:
+        console.print(f"\n❌ Couldn't fetch weather data: {str(e)}", style="error")
+        return "moderate"
+    except (KeyError, ValueError) as e:
+        console.print(f"\n❌ Error processing weather data: {str(e)}", style="error")
+        return "moderate"
+
+def extract_essential_items(text):
+    """Extract key fashion items from the generated advice text."""
+    essential_categories = {
+        'top': r'Top/Outfit:\s*([^.\n]+)',
+        'bottom': r'Bottom:\s*([^.\n]+)',
+        'footwear': r'Footwear:\s*([^.\n]+)',
+        'accessories': r'Accessories:\s*([^.\n]+)'
+    }
+
+    essential_items = []
+    for category, pattern in essential_categories.items():
+        match = re.search(pattern, text)
+        if match:
+            items = match.group(1).strip()
+            item_list = [item.strip() for item in re.split(r'[,&]', items)]
+            essential_items.extend(item_list[:2])
+
+    filtered_items = []
+    generic_words = {'with', 'and', 'or', 'the', 'a', 'an', 'in', 'on', 'at', 'to'}
+    for item in essential_items:
+        item = ' '.join(word for word in item.split() if word.lower() not in generic_words)
+        if item and item not in filtered_items:
+            filtered_items.append(item)
+
+    return filtered_items[:5]
+
+def generate_amazon_search_link(search_terms):
+    """Generate an Amazon search URL for the given fashion items."""
+    base_url = "https://www.amazon.com/s"
+    params = {
+        'k': search_terms,
+        'i': 'fashion'
+    }
+    query_string = urllib.parse.urlencode(params)
+    return f"{base_url}?{query_string}"
+
+def create_shopping_table(items, gender, occasion):
+    """Create an attractive shopping suggestions table."""
+    table = Table(
+        title="✨ Shopping Suggestions Just For You ✨",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="accent",
+        title_style="accent"
+    )
+
+    table.add_column("Must-Have Item", style="info")
+    table.add_column("Where to Find It", style="link")
+
+    for item in items:
+        search_terms = f"{gender} {occasion} {item}".strip()
+        link = generate_amazon_search_link(search_terms)
+        table.add_row(
+            f"💫 {item.capitalize()}",
+            f"[link={link}]Click to Shop[/link]"
+        )
+
+    return table
+
+def format_fashion_advice(gender, occasion, weather):
+    """Generate structured fashion advice with essential shopping suggestions."""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        progress.add_task("✨ Creating your personalized fashion suggestions...", total=None)
+
+        model = genai.GenerativeModel('gemini-pro')
+        prompt = f"""
+        Create a concise fashion guide for a {gender} attending a {occasion} in {weather} weather.
+        Format the response in these specific categories only:
+        1. Top/Outfit:
+        2. Bottom:
+        3. Footwear:
+        4. Accessories:
+        5. Style Tips:
+        6. Color Combinations:
+        7. Weather-Specific Advice:
+
+        Keep each category to 1-2 lines maximum.
+        Focus on specific items rather than general descriptions.
+        For Weather-Specific Advice, provide just one crucial tip.
+        """
+
+        response = model.generate_content(prompt)
+        advice = response.text
+
+        key_items = extract_essential_items(advice)
+        shopping_table = create_shopping_table(key_items, gender, occasion)
+
+        return advice, shopping_table
+
+def handle_follow_up_question(question, gender, occasion, weather):
+    """Handle follow-up questions in a conversational manner."""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        progress.add_task("💭 Let me think about that...", total=None)
+
+        model = genai.GenerativeModel('gemini-pro')
+        prompt = f"""
+        Respond like a friendly fashion stylist having a casual conversation.
+        Question: "{question}"
+        Context: Styling for {gender} at a {occasion} in {weather} weather.
+        Keep it personal and engaging, like chatting with a friend.
+        Add relevant emojis for visual appeal.
+        Be specific with suggestions but maintain a conversational tone.
+        """
+
+        response = model.generate_content(prompt)
+        answer = response.text
+
+        key_items = extract_essential_items(answer)
+        shopping_table = create_shopping_table(key_items, gender, occasion) if key_items else None
+
+        return answer, shopping_table
+
+def fashion_stylist_chatbot():
+    try:
+        display_welcome_banner()
+
+        # Get gender input
+        gender = get_user_input(
+            "👋 Hi there! Who are we styling today? (men/women)",
+            valid_options=['men', 'women'],
+            error_msg="I can help style both men and women - which would you prefer?"
+        )
+
+        # Get city and weather
+        city = get_user_input("🌍 Which city are you in? I'll check the weather to suggest the perfect outfit!")
+        weather = get_weather(city)
+        console.print(f"\n🌤️ Perfect! The weather in {city.capitalize()} is {weather}", style="success")
+
+        # Get occasion
+        occasion = get_user_input(
+            "🎉 What's the special occasion? (casual/formal/party/work/date/wedding)",
+            valid_options=['casual', 'formal', 'party', 'work', 'date', 'wedding'],
+            error_msg="Let's pick from these occasions: casual, formal, party, work, date, or wedding"
+        )
+
+        # Display session information
+        display_session_info(gender, occasion, weather)
+
+        # Generate and display fashion advice
+        console.print("\n[heading]✨ Generating your personalized fashion advice...[/heading]")
+        fashion_advice, shopping_table = format_fashion_advice(gender, occasion, weather)
+
+        # Display advice and shopping suggestions
+        console.print(Panel(
+            Padding(fashion_advice, 1),
+            title="[bold magenta]🎨 Your Personalized Fashion Guide[/bold magenta]",
+            border_style="magenta",
+            box=box.DOUBLE
+        ))
+
+        console.print("\n[heading]💫 Suggested Shopping Links:[/heading]")
+        console.print(shopping_table)
+
+        # Interactive Q&A
+        question_count = 0
+        while True:
+            prompt = "\n💭 What else would you like to know about your outfit?" if question_count else "\n💭 Any questions about your outfit suggestions?"
+            question = get_user_input(prompt + "\n(Type 'exit' to finish)")
+
+            if question in ['exit', 'quit', 'no', 'n']:
+                break
+
+            if question:
+                question_count += 1
+                answer, follow_up_shopping = handle_follow_up_question(question, gender, occasion, weather)
+
+                console.print(Panel(
+                    Padding(answer, 1),
+                    title=f"✨ Style Tip #{question_count}",
+                    border_style="info",
+                    box=box.ROUNDED
+                ))
+
+                if follow_up_shopping:
+                    console.print("\n🛍️ Some extra suggestions for you:", style="info")
+                    console.print(follow_up_shopping)
+
+        # Farewell message
+        console.print(Panel(
+            "✨ Thanks for letting me help style you today! You're going to look amazing! ✨",
+            border_style="accent",
+            box=box.DOUBLE,
+            padding=(1, 2)
+        ))
+
+    except KeyboardInterrupt:
+        console.print("\n\n✨ Take care! Come back anytime for more style advice! ✨", style="success")
+
+if __name__ == "__main__":
+    fashion_stylist_chatbot()
